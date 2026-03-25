@@ -20,3 +20,9 @@ test_search.py
 # OS
 .DS_Store
 Thumbs.db
+
+check_progress.py
+extract_img.py
+test_ocr.py
+sample_*
+ocr_cache.json
