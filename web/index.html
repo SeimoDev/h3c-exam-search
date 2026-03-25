@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新华三杯题库搜索</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg2: #f8f9fa;
+  --bg3: #e9ecef;
+  --text: #212529;
+  --text2: #6c757d;
+  --border: #dee2e6;
+  --primary: #0d6efd;
+  --primary-light: #e7f1ff;
+  --success: #198754;
+  --success-light: #d1e7dd;
+  --danger: #dc3545;
+  --warning: #ffc107;
+  --shadow: rgba(0,0,0,0.08);
+  --radius: 12px;
+}
+
+[data-theme="dark"] {
+  --bg: #1a1a2e;
+  --bg2: #16213e;
+  --bg3: #0f3460;
+  --text: #e4e4e4;
+  --text2: #a0a0a0;
+  --border: #2a2a4a;
+  --primary: #4dabf7;
+  --primary-light: #1a2a4a;
+  --success: #51cf66;
+  --success-light: #1a3a2a;
+  --danger: #ff6b6b;
+  --warning: #ffd43b;
+  --shadow: rgba(0,0,0,0.3);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  transition: background 0.3s, color 0.3s;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 40px 0 30px;
+}
+
+.header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--primary), #6610f2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.header p {
+  color: var(--text2);
+  font-size: 14px;
+}
+
+.stats-bar {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 13px;
+  color: var(--text2);
+}
+
+/* Theme toggle */
+.theme-toggle {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+  z-index: 100;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+}
+
+/* Search */
+.search-box {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+  padding: 16px 0;
+}
+
+.search-input-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.search-input-wrap input {
+  flex: 1;
+  padding: 12px 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 16px;
+  background: var(--bg2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input-wrap input:focus {
+  border-color: var(--primary);
+}
+
+.search-input-wrap input::placeholder {
+  color: var(--text2);
+}
+
+.search-btn {
+  padding: 12px 24px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+.search-btn:hover { opacity: 0.9; }
+.search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Mode tabs */
+.mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 3px;
+  width: fit-content;
+}
+
+.mode-tab {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.mode-tab.active {
+  background: var(--primary);
+  color: white;
+}
+
+/* Results */
+.results-info {
+  padding: 12px 0;
+  font-size: 14px;
+  color: var(--text2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text2);
+}
+
+.loading .spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Question Card */
+.question-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  transition: box-shadow 0.2s;
+}
+
+.question-card:hover {
+  box-shadow: 0 4px 16px var(--shadow);
+}
+
+.q-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.q-number {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 15px;
+}
+
+.q-difficulty {
+  color: var(--warning);
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.q-type {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.q-score {
+  font-size: 12px;
+  color: var(--text2);
+  margin-left: auto;
+}
+
+.q-content {
+  font-size: 15px;
+  line-height: 1.7;
+  margin-bottom: 14px;
+  white-space: pre-wrap;
+}
+
+.q-options {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.q-option {
+  padding: 8px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.q-option.correct {
+  border-color: var(--success);
+  background: var(--success-light);
+  font-weight: 500;
+}
+
+.q-answer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.q-answer {
+  font-weight: 700;
+  color: var(--success);
+  font-size: 15px;
+}
+
+.show-explanation-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.show-explanation-btn:hover {
+  background: var(--primary-light);
+}
+
+.q-explanation {
+  display: none;
+  margin-top: 10px;
+  padding: 12px 16px;
+  background: var(--bg3);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text2);
+  white-space: pre-wrap;
+}
+
+.q-explanation.show {
+  display: block;
+}
+
+mark {
+  background: rgba(255, 215, 0, 0.3);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text2);
+}
+
+.empty-state .icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  font-size: 16px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .container { padding: 12px; }
+  .header { padding: 20px 0 16px; }
+  .header h1 { font-size: 22px; }
+  .search-input-wrap input { font-size: 14px; padding: 10px 14px; }
+  .search-btn { padding: 10px 16px; font-size: 14px; }
+  .question-card { padding: 14px; }
+}
+</style>
+</head>
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
+
+  <div class="container">
+    <div class="header">
+      <h1>📚 新华三杯题库搜索</h1>
+      <p>2026全国大学生数字技术大赛 · 网络赛道备考资料</p>
+      <div class="stats-bar" id="statsBar"></div>
+    </div>
+
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <input type="text" id="searchInput" placeholder="输入关键词或描述搜索题目..." 
+               autocomplete="off" autofocus>
+        <button class="search-btn" id="searchBtn" onclick="doSearch()">搜索</button>
+      </div>
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="semantic" onclick="setMode(this)">🧠 语义搜索</button>
+        <button class="mode-tab" data-mode="keyword" onclick="setMode(this)">🔍 精确搜索</button>
+        <button class="mode-tab" data-mode="both" onclick="setMode(this)">⚡ 混合搜索</button>
+      </div>
+    </div>
+
+    <div id="resultsInfo" class="results-info" style="display:none"></div>
+    <div id="loading" class="loading" style="display:none">
+      <div class="spinner"></div>
+      <p style="margin-top:12px">搜索中...</p>
+    </div>
+    <div id="results"></div>
+    <div id="emptyState" class="empty-state">
+      <div class="icon">🔎</div>
+      <p>输入问题或关键词开始搜索</p>
+      <p style="font-size:13px;margin-top:8px;color:var(--text2)">支持语义搜索（如"VLAN配置"）和精确搜索（如"OSPF"）</p>
+    </div>
+  </div>
+
+<script>
+const API = '';
+let currentMode = 'semantic';
+let searchTimer = null;
+
+// Theme
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
+  localStorage.setItem('theme', isDark ? 'light' : 'dark');
+}
+
+(function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+})();
+
+// Stats
+fetch(API + '/api/stats')
+  .then(r => r.json())
+  .then(data => {
+    const bar = document.getElementById('statsBar');
+    bar.innerHTML = `
+      <span class="stat-chip">📝 共 ${data.total} 题</span>
+      ${Object.entries(data.by_type).map(([k,v]) => `<span class="stat-chip">${k} ${v}</span>`).join('')}
+      ${Object.entries(data.by_difficulty).map(([k,v]) => `<span class="stat-chip">${k} ${v}</span>`).join('')}
+    `;
+  })
+  .catch(() => {});
+
+// Search
+function setMode(btn) {
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  currentMode = btn.dataset.mode;
+}
+
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+// Auto search with debounce
+document.getElementById('searchInput').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (e.target.value.trim().length >= 2) doSearch();
+  }, 500);
+});
+
+async function doSearch() {
+  const query = document.getElementById('searchInput').value.trim();
+  if (!query) return;
+
+  const loading = document.getElementById('loading');
+  const results = document.getElementById('results');
+  const info = document.getElementById('resultsInfo');
+  const empty = document.getElementById('emptyState');
+  const btn = document.getElementById('searchBtn');
+
+  btn.disabled = true;
+  loading.style.display = 'block';
+  results.innerHTML = '';
+  info.style.display = 'none';
+  empty.style.display = 'none';
+
+  const startTime = Date.now();
+
+  try {
+    const resp = await fetch(`${API}/api/search?q=${encodeURIComponent(query)}&mode=${currentMode}&limit=30`);
+    const data = await resp.json();
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+
+    loading.style.display = 'none';
+    btn.disabled = false;
+
+    if (data.results.length === 0) {
+      empty.style.display = 'block';
+      empty.innerHTML = `<div class="icon">😕</div><p>没有找到相关题目</p><p style="font-size:13px;margin-top:8px;color:var(--text2)">试试换个关键词或使用语义搜索</p>`;
+      return;
+    }
+
+    info.style.display = 'flex';
+    info.innerHTML = `
+      <span>找到 <strong>${data.results.length}</strong> 道相关题目</span>
+      <span>用时 ${elapsed}s · ${getModeLabel(data.mode)}</span>
+    `;
+
+    results.innerHTML = data.results.map(q => renderQuestion(q, query)).join('');
+  } catch (err) {
+    loading.style.display = 'none';
+    btn.disabled = false;
+    results.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>搜索出错: ${err.message}</p></div>`;
+  }
+}
+
+function getModeLabel(mode) {
+  return { semantic: '🧠 语义', keyword: '🔍 精确', both: '⚡ 混合' }[mode] || mode;
+}
+
+function renderQuestion(q, query) {
+  const stars = '★'.repeat(q.difficulty) || '';
+  const starsGray = '☆'.repeat(Math.max(0, 5 - q.difficulty));
+  const options = Object.entries(q.options).sort(([a],[b]) => a.localeCompare(b));
+  const answerLetters = q.answer ? q.answer.split('') : [];
+  const keywords = currentMode !== 'semantic' ? query.split(/\s+/).filter(Boolean) : [];
+
+  function highlight(text) {
+    if (!keywords.length || !text) return escapeHtml(text);
+    let result = escapeHtml(text);
+    keywords.forEach(kw => {
+      const re = new RegExp(escapeRegex(escapeHtml(kw)), 'gi');
+      result = result.replace(re, '<mark>$&</mark>');
+    });
+    return result;
+  }
+
+  return `
+    <div class="question-card">
+      <div class="q-header">
+        <span class="q-number">Q${q.number}</span>
+        <span class="q-difficulty">${stars}<span style="opacity:0.3">${starsGray}</span></span>
+        <span class="q-type">${q.type}</span>
+        ${q.score ? `<span class="q-score">相关度 ${(q.score * 100).toFixed(1)}%</span>` : ''}
+      </div>
+      <div class="q-content">${highlight(q.content)}</div>
+      <div class="q-options">
+        ${options.map(([letter, text]) => `
+          <div class="q-option ${answerLetters.includes(letter) ? 'correct' : ''}">
+            <strong>${letter}.</strong> ${highlight(text)}
+            ${answerLetters.includes(letter) ? ' ✅' : ''}
+          </div>
+        `).join('')}
+      </div>
+      <div class="q-answer-row">
+        <span class="q-answer">答案: ${q.answer || '无'}</span>
+        ${q.explanation ? `<button class="show-explanation-btn" onclick="toggleExplanation(this)">📖 查看解析</button>` : ''}
+      </div>
+      ${q.explanation ? `<div class="q-explanation">${highlight(q.explanation)}</div>` : ''}
+    </div>
+  `;
+}
+
+function toggleExplanation(btn) {
+  const exp = btn.closest('.question-card').querySelector('.q-explanation');
+  if (exp) {
+    exp.classList.toggle('show');
+    btn.textContent = exp.classList.contains('show') ? '📖 收起解析' : '📖 查看解析';
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+</script>
+</body>
+</html>

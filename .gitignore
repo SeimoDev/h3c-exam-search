@@ -1,0 +1,22 @@
+# Generated data
+exam.db
+questions.json
+
+# PDF source (too large for git)
+exam_bank.pdf
+*.pdf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Temp/test files
+raw_text_sample.txt
+check.py
+test_search.py
+
+# OS
+.DS_Store
+Thumbs.db
