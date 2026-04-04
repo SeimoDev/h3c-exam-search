@@ -9,9 +9,9 @@ import sys
 import os
 import time
 
-PDF_PATH = r"D:\openclaw\exam_bank.pdf"
-OUTPUT_PATH = r"D:\openclaw\exam-search\questions.json"
-OCR_CACHE_PATH = r"D:\openclaw\exam-search\ocr_cache.json"
+PDF_PATH = r"D:\h3c-exam-search\exam_bank.pdf"
+OUTPUT_PATH = r"D:\h3c-exam-search\exam-search\questions.json"
+OCR_CACHE_PATH = r"D:\h3c-exam-search\exam-search\ocr_cache.json"
 
 def extract_text_pages(doc):
     """Extract text from all pages, using PyMuPDF text extraction."""
