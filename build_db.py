@@ -5,26 +5,52 @@
 import json
 import sqlite3
 import struct
-import sys
 import os
 
-# Paths
-QUESTIONS_PATH = r"D:\openclaw\exam-search\questions.json"
-DB_PATH = r"D:\openclaw\exam-search\exam.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR_CANDIDATES = [
+    os.path.join(BASE_DIR, "exam-search"),
+    BASE_DIR,
+]
+MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
+
+def candidate_data_dirs():
+    seen = set()
+    for data_dir in DATA_DIR_CANDIDATES:
+        normalized = os.path.normcase(os.path.normpath(data_dir))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        yield data_dir
+
+def resolve_questions_path():
+    for data_dir in candidate_data_dirs():
+        questions_path = os.path.join(data_dir, "questions.json")
+        if os.path.exists(questions_path):
+            return questions_path
+    return os.path.join(next(candidate_data_dirs()), "questions.json")
 
 def serialize_f32(vector):
     """Serialize a list of floats into bytes for sqlite-vec."""
     return struct.pack(f"{len(vector)}f", *vector)
 
 def main():
+    questions_path = resolve_questions_path()
+    db_path = os.path.join(os.path.dirname(questions_path), "exam.db")
+
+    if not os.path.exists(questions_path):
+        raise FileNotFoundError(
+            f"Questions file not found: {questions_path}. Run parse_pdf.py first."
+        )
+
     print("Loading questions...")
-    with open(QUESTIONS_PATH, 'r', encoding='utf-8') as f:
+    with open(questions_path, 'r', encoding='utf-8') as f:
         questions = json.load(f)
     print(f"Loaded {len(questions)} questions")
 
     print("Loading sentence-transformers model (first time may download ~500MB)...")
     from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    model = SentenceTransformer(MODEL_NAME)
     print("Model loaded")
 
     # Prepare texts for embedding
@@ -44,11 +70,11 @@ def main():
     print(f"Embeddings generated: {embeddings.shape}")
 
     # Create database
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+    if os.path.exists(db_path):
+        os.remove(db_path)
 
     print("Creating database...")
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     
     # Enable sqlite-vec
     import sqlite_vec
@@ -126,12 +152,12 @@ def main():
     count = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
     vec_count = conn.execute("SELECT COUNT(*) FROM questions_vec").fetchone()[0]
     fts_count = conn.execute("SELECT COUNT(*) FROM questions_fts").fetchone()[0]
-    print(f"\nDatabase created: {DB_PATH}")
+    print(f"\nDatabase created: {db_path}")
     print(f"  Questions: {count}")
     print(f"  Vector entries: {vec_count}")
     print(f"  FTS entries: {fts_count}")
     print(f"  Embedding dimension: {dim}")
-    print(f"  DB size: {os.path.getsize(DB_PATH) / 1024 / 1024:.1f} MB")
+    print(f"  DB size: {os.path.getsize(db_path) / 1024 / 1024:.1f} MB")
 
     conn.close()
     print("Done!")
