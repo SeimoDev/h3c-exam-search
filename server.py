@@ -6,13 +6,17 @@ import json
 import sqlite3
 import struct
 import os
-import sys
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exam.db")
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "web")
+DATA_DIR_CANDIDATES = [
+    os.path.join(BASE_DIR, "exam-search"),
+    BASE_DIR,
+]
+MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
 
 app = Flask(__name__, static_folder=STATIC_DIR)
 CORS(app)
@@ -24,12 +28,59 @@ def get_model():
     global _model
     if _model is None:
         from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+        _model = SentenceTransformer(MODEL_NAME)
     return _model
+
+def candidate_db_paths():
+    seen = set()
+    for data_dir in DATA_DIR_CANDIDATES:
+        normalized = os.path.normcase(os.path.normpath(data_dir))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        yield os.path.join(data_dir, "exam.db")
+
+def database_has_tables(db_path, required_tables):
+    if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
+        return False
+
+    probe = sqlite3.connect(db_path)
+    try:
+        table_names = {
+            row[0]
+            for row in probe.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+            )
+        }
+        return required_tables.issubset(table_names)
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        probe.close()
+
+def resolve_db_path():
+    for db_path in candidate_db_paths():
+        if database_has_tables(db_path, {"questions"}):
+            return db_path
+    return None
+
+def table_exists(conn, table_name):
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
 
 def get_db():
     """Get a database connection with sqlite-vec loaded."""
-    conn = sqlite3.connect(DB_PATH)
+    db_path = resolve_db_path()
+    if not db_path:
+        expected = ", ".join(candidate_db_paths())
+        raise FileNotFoundError(
+            f"No usable exam database found. Expected {expected}. Run build_db.py first."
+        )
+
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     import sqlite_vec
     conn.enable_load_extension(True)
@@ -57,32 +108,57 @@ def search():
     if not query:
         return jsonify({"results": [], "total": 0, "query": query, "mode": mode})
     
-    conn = get_db()
-    results = []
-    
-    if mode == 'keyword':
-        results = keyword_search(conn, query, limit)
-    elif mode == 'semantic':
-        results = semantic_search(conn, query, limit)
-    else:  # both
-        sem_results = semantic_search(conn, query, limit)
-        kw_results = keyword_search(conn, query, limit)
-        # Merge: deduplicate by id, prefer semantic order
-        seen = set()
-        for r in sem_results + kw_results:
-            if r['id'] not in seen:
-                seen.add(r['id'])
-                results.append(r)
-            if len(results) >= limit:
-                break
-    
-    conn.close()
-    return jsonify({
-        "results": results,
-        "total": len(results),
-        "query": query,
-        "mode": mode
-    })
+    try:
+        conn = get_db()
+    except FileNotFoundError as exc:
+        return jsonify({
+            "error": str(exc),
+            "results": [],
+            "total": 0,
+            "query": query,
+            "mode": mode
+        }), 500
+
+    try:
+        results = []
+        warning = None
+        vector_ready = table_exists(conn, "questions_vec")
+
+        if mode == 'keyword':
+            results = keyword_search(conn, query, limit)
+        elif mode == 'semantic':
+            if vector_ready:
+                results = semantic_search(conn, query, limit)
+            else:
+                warning = "Vector index unavailable; returning keyword results instead."
+                results = keyword_search(conn, query, limit)
+        else:  # both
+            sem_results = semantic_search(conn, query, limit) if vector_ready else []
+            kw_results = keyword_search(conn, query, limit)
+
+            if not vector_ready:
+                warning = "Vector index unavailable; returning keyword results only."
+
+            # Merge: deduplicate by id, prefer semantic order
+            seen = set()
+            for r in sem_results + kw_results:
+                if r['id'] not in seen:
+                    seen.add(r['id'])
+                    results.append(r)
+                if len(results) >= limit:
+                    break
+
+        payload = {
+            "results": results,
+            "total": len(results),
+            "query": query,
+            "mode": mode
+        }
+        if warning:
+            payload["warning"] = warning
+        return jsonify(payload)
+    finally:
+        conn.close()
 
 def semantic_search(conn, query, limit):
     """Vector similarity search."""
@@ -169,43 +245,55 @@ def keyword_search(conn, query, limit):
 
 @app.route('/api/stats', methods=['GET'])
 def stats():
-    conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
-    by_difficulty = {}
-    for row in conn.execute("SELECT difficulty, COUNT(*) as cnt FROM questions GROUP BY difficulty ORDER BY difficulty"):
-        stars = '★' * row['difficulty'] if row['difficulty'] > 0 else '未标注'
-        by_difficulty[stars] = row['cnt']
-    by_type = {}
-    for row in conn.execute("SELECT type, COUNT(*) as cnt FROM questions GROUP BY type"):
-        by_type[row['type']] = row['cnt']
-    conn.close()
-    return jsonify({
-        "total": total,
-        "by_difficulty": by_difficulty,
-        "by_type": by_type
-    })
+    try:
+        conn = get_db()
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+        by_difficulty = {}
+        for row in conn.execute("SELECT difficulty, COUNT(*) as cnt FROM questions GROUP BY difficulty ORDER BY difficulty"):
+            stars = '★' * row['difficulty'] if row['difficulty'] > 0 else '未标注'
+            by_difficulty[stars] = row['cnt']
+        by_type = {}
+        for row in conn.execute("SELECT type, COUNT(*) as cnt FROM questions GROUP BY type"):
+            by_type[row['type']] = row['cnt']
+        return jsonify({
+            "total": total,
+            "by_difficulty": by_difficulty,
+            "by_type": by_type
+        })
+    finally:
+        conn.close()
 
 @app.route('/api/question/<int:qid>', methods=['GET'])
 def get_question(qid):
-    conn = get_db()
-    row = conn.execute("SELECT * FROM questions WHERE id = ?", (qid,)).fetchone()
-    conn.close()
-    if not row:
-        return jsonify({"error": "Not found"}), 404
-    return jsonify({
-        "id": row["id"],
-        "number": row["number"],
-        "difficulty": row["difficulty"],
-        "type": row["type"],
-        "content": row["content"],
-        "options": json.loads(row["options_json"]),
-        "answer": row["answer"],
-        "section": row["section"],
-        "explanation": row["explanation"]
-    })
+    try:
+        conn = get_db()
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    try:
+        row = conn.execute("SELECT * FROM questions WHERE id = ?", (qid,)).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({
+            "id": row["id"],
+            "number": row["number"],
+            "difficulty": row["difficulty"],
+            "type": row["type"],
+            "content": row["content"],
+            "options": json.loads(row["options_json"]),
+            "answer": row["answer"],
+            "section": row["section"],
+            "explanation": row["explanation"]
+        })
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
-    print(f"Database: {DB_PATH}")
+    print(f"Database: {resolve_db_path() or next(candidate_db_paths())}")
     print(f"Static files: {STATIC_DIR}")
     print("Pre-loading embedding model...")
     get_model()
